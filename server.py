@@ -20,7 +20,7 @@ async def get_access_token():
     async with httpx.AsyncClient() as client:
         resp = await client.post(token_url, data=data)
         print("🔹 Status code:", resp.status_code)
-        print("🔹 Response:", resp.text)  # <-- show full response
+        print("🔹 Response:", resp.text)
         resp.raise_for_status()
         res = resp.json()
         if "access_token" not in res:
@@ -42,7 +42,6 @@ async def build_mcp():
         timeout=30.0,
     )
 
-    # Generic route maps
     route_maps = [
         RouteMap(pattern=r"^/admin/.*", mcp_type=MCPType.EXCLUDE),
         RouteMap(tags={"internal"}, mcp_type=MCPType.EXCLUDE),
@@ -50,7 +49,6 @@ async def build_mcp():
         RouteMap(methods=["GET"], mcp_type=MCPType.RESOURCE),
     ]
 
-    # Load OpenAPI YAML files
     yaml_files = glob.glob("openapi-all/*.yaml") + glob.glob("openapi-all/*.yml")
     combined_paths = {}
     combined_tags = []
@@ -77,20 +75,20 @@ async def build_mcp():
     )
 
 
+# 🚨 Creamos el objeto global que FastMCP Cloud necesita
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+mcp = loop.run_until_complete(build_mcp())
+
+# Solo se ejecuta localmente
 if __name__ == "__main__":
     import os
 
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     try:
         print("🚀 Starting MCP server...")
-        mcp = loop.run_until_complete(build_mcp())
-        loop.close()
-
         print(f"✅ MCP server ready at http://0.0.0.0:8080")
         mcp.run(transport="http", host="0.0.0.0", port=8080)
     except Exception as e:
