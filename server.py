@@ -19,11 +19,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ====================================================
-# 🔹 Objeto global MCP (requerido por FastMCP Cloud)
-# ====================================================
-mcp: FastMCP | None = None
-
 
 # ====================================================
 # 🔹 Función para obtener token Zoho
@@ -97,29 +92,36 @@ async def build_mcp() -> FastMCP:
 
 
 # ====================================================
-# 🔹 Inicialización MCP (síncrona para Cloud y local)
+# 🔹 Inicialización MCP durante la importación
 # ====================================================
-def init_mcp_sync():
-    global mcp
-    if mcp is None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+def init_mcp_at_import():
+    """Inicializa MCP síncronamente durante la importación del módulo"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No hay loop corriendo, crear uno nuevo
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        mcp = loop.run_until_complete(build_mcp())
-        logger.info("🚀 MCP initialized")
+    result = loop.run_until_complete(build_mcp())
+    logger.info("🚀 MCP initialized at import time")
+    return result
 
 
 # ====================================================
-# 🔹 Ejecutar MCP
+# 🔹 CRÍTICO: Inicializar mcp AHORA (durante import)
+# ====================================================
+mcp = init_mcp_at_import()
+
+
+# ====================================================
+# 🔹 Ejecutar MCP localmente (opcional)
 # ====================================================
 if __name__ == "__main__":
+    # Solo para ejecución local
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
-    init_mcp_sync()
     logger.info("🚀 MCP server ready at http://0.0.0.0:8080")
 
     try:
