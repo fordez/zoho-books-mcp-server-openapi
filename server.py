@@ -9,6 +9,7 @@ from fastmcp.experimental.server.openapi import MCPType, RouteMap
 from config import Config
 
 
+# 🔹 Función para obtener token de Zoho
 async def get_access_token():
     token_url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
@@ -28,6 +29,7 @@ async def get_access_token():
         return res["access_token"]
 
 
+# 🔹 Construcción del objeto MCP
 async def build_mcp():
     access_token = await get_access_token()
     print("🔐 New access token obtained")
@@ -75,12 +77,17 @@ async def build_mcp():
     )
 
 
-# 🚨 Creamos el objeto global que FastMCP Cloud necesita
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-mcp = loop.run_until_complete(build_mcp())
+# 🔹 Inicializar MCP para FastMCP Cloud
+mcp = None
 
-# Solo se ejecuta localmente
+
+async def init_mcp():
+    global mcp
+    if mcp is None:
+        mcp = await build_mcp()
+
+
+# 🔹 Solo para ejecución local
 if __name__ == "__main__":
     import os
 
@@ -88,14 +95,20 @@ if __name__ == "__main__":
     os.environ["FASTMCP_PORT"] = "8080"
 
     try:
-        print("🚀 Starting MCP server...")
-        print(f"✅ MCP server ready at http://0.0.0.0:8080")
+        # Detectar si ya hay un loop corriendo
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # Inicializar MCP
+        loop.run_until_complete(init_mcp())
+
+        print("🚀 MCP server ready at http://0.0.0.0:8080")
         mcp.run(transport="http", host="0.0.0.0", port=8080)
+
     except Exception as e:
         print(f"❌ Error: {e}")
         if "address already in use" in str(e).lower():
             print("💡 Port 8080 is in use. Free it with: lsof -ti:8080 | xargs kill -9")
-    finally:
-        if not loop.is_closed():
-            loop.close()
-        print("👋 Server stopped")
