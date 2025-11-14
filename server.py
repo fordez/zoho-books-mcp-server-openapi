@@ -1,7 +1,7 @@
-import asyncio
 import glob
 import logging
 import os
+from functools import lru_cache
 
 import httpx
 import yaml
@@ -21,9 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 # ====================================================
-# 🔹 Función para obtener token Zoho
+# 🔹 Función SÍNCRONA para obtener token Zoho
 # ====================================================
-async def get_access_token() -> str:
+@lru_cache(maxsize=1)
+def get_access_token() -> str:
+    """Obtiene el access token de forma síncrona usando httpx.Client"""
     token_url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
         "refresh_token": Config.refresh_token,
@@ -31,8 +33,9 @@ async def get_access_token() -> str:
         "client_secret": Config.client_secret,
         "grant_type": "refresh_token",
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(token_url, data=data)
+
+    with httpx.Client() as client:
+        resp = client.post(token_url, data=data)
         resp.raise_for_status()
         res = resp.json()
         if "access_token" not in res:
@@ -42,12 +45,14 @@ async def get_access_token() -> str:
 
 
 # ====================================================
-# 🔹 Construcción MCP (async)
+# 🔹 Construcción MCP SÍNCRONA
 # ====================================================
-async def build_mcp() -> FastMCP:
-    access_token = await get_access_token()
+def build_mcp() -> FastMCP:
+    """Construye el servidor MCP de forma completamente síncrona"""
+    access_token = get_access_token()
 
-    client = httpx.AsyncClient(
+    # Cliente síncrono para FastMCP Cloud
+    client = httpx.Client(
         base_url=Config.base_url,
         headers={
             "Authorization": f"Zoho-oauthtoken {access_token}",
@@ -86,32 +91,18 @@ async def build_mcp() -> FastMCP:
         "servers": [{"url": Config.base_url}],
     }
 
+    logger.info("🚀 Building MCP from OpenAPI spec")
     return FastMCP.from_openapi(
         openapi_spec=combined_spec, client=client, route_maps=route_maps
     )
 
 
 # ====================================================
-# 🔹 Inicialización MCP durante la importación
+# 🔹 CRÍTICO: Inicializar mcp durante import
 # ====================================================
-def init_mcp_at_import():
-    """Inicializa MCP síncronamente durante la importación del módulo"""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No hay loop corriendo, crear uno nuevo
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    result = loop.run_until_complete(build_mcp())
-    logger.info("🚀 MCP initialized at import time")
-    return result
-
-
-# ====================================================
-# 🔹 CRÍTICO: Inicializar mcp AHORA (durante import)
-# ====================================================
-mcp = init_mcp_at_import()
+logger.info("🔄 Initializing MCP server...")
+mcp = build_mcp()
+logger.info("✅ MCP server initialized successfully")
 
 
 # ====================================================
@@ -122,7 +113,7 @@ if __name__ == "__main__":
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
-    logger.info("🚀 MCP server ready at http://0.0.0.0:8080")
+    logger.info("🚀 Starting MCP server at http://0.0.0.0:8080")
 
     try:
         mcp.run(transport="http", host="0.0.0.0", port=8080)
