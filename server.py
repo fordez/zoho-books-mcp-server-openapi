@@ -9,8 +9,11 @@ from fastmcp.experimental.server.openapi import MCPType, RouteMap
 
 from config import Config
 
+# 🔹 Objeto global MCP
+mcp: FastMCP | None = None
 
-# 🔹 Función para obtener token de Zoho
+
+# 🔹 Función para obtener token Zoho
 async def get_access_token():
     token_url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
@@ -21,8 +24,6 @@ async def get_access_token():
     }
     async with httpx.AsyncClient() as client:
         resp = await client.post(token_url, data=data)
-        print("🔹 Status code:", resp.status_code)
-        print("🔹 Response:", resp.text)
         resp.raise_for_status()
         res = resp.json()
         if "access_token" not in res:
@@ -30,8 +31,8 @@ async def get_access_token():
         return res["access_token"]
 
 
-# 🔹 Construcción del objeto MCP
-async def build_mcp():
+# 🔹 Construcción MCP
+async def build_mcp() -> FastMCP:
     access_token = await get_access_token()
     print("🔐 New access token obtained")
 
@@ -78,31 +79,29 @@ async def build_mcp():
     )
 
 
-# 🔹 Objeto global requerido por FastMCP Cloud
-mcp: FastMCP | None = None
-
-
-# 🔹 Inicialización async para FastMCP Cloud
-async def init_mcp():
+# 🔹 Inicialización MCP (sin asyncio.run)
+def init_mcp_sync():
     global mcp
     if mcp is None:
-        mcp = await build_mcp()
+        # Si ya hay un loop corriendo, usar run_until_complete
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        mcp = loop.run_until_complete(build_mcp())
 
 
-# 🔹 Ejecución local
+# 🔹 Ejecutar MCP
 if __name__ == "__main__":
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
-    async def main():
-        global mcp
-        if mcp is None:
-            mcp = await build_mcp()
-        print("🚀 MCP server ready at http://0.0.0.0:8080")
-        await mcp.run(transport="http", host="0.0.0.0", port=8080)
+    init_mcp_sync()
+    print("🚀 MCP server ready at http://0.0.0.0:8080")
 
     try:
-        asyncio.run(main())
+        mcp.run(transport="http", host="0.0.0.0", port=8080)
     except Exception as e:
         print(f"❌ Error: {e}")
         if "address already in use" in str(e).lower():
