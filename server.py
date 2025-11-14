@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import os
 
 import httpx
 import yaml
@@ -77,37 +78,31 @@ async def build_mcp():
     )
 
 
-# 🔹 Inicializar MCP para FastMCP Cloud
-mcp = None
+# 🔹 Objeto global requerido por FastMCP Cloud
+mcp: FastMCP | None = None
 
 
+# 🔹 Inicialización async para FastMCP Cloud
 async def init_mcp():
     global mcp
     if mcp is None:
         mcp = await build_mcp()
 
 
-# 🔹 Solo para ejecución local
+# 🔹 Ejecución local
 if __name__ == "__main__":
-    import os
-
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
-    try:
-        # Detectar si ya hay un loop corriendo
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        # Inicializar MCP
-        loop.run_until_complete(init_mcp())
-
+    async def main():
+        global mcp
+        if mcp is None:
+            mcp = await build_mcp()
         print("🚀 MCP server ready at http://0.0.0.0:8080")
-        mcp.run(transport="http", host="0.0.0.0", port=8080)
+        await mcp.run(transport="http", host="0.0.0.0", port=8080)
 
+    try:
+        asyncio.run(main())
     except Exception as e:
         print(f"❌ Error: {e}")
         if "address already in use" in str(e).lower():
