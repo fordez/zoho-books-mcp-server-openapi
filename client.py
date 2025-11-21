@@ -1,16 +1,23 @@
 import asyncio
+import ssl
 
 from fastmcp import Client
 
 # MCP server URL
-SERVER_URL = "https://147.93.28.130:8080/mcp"
+SERVER_URL = "https://147.93.28.130:443/mcp"
 
 
 async def test_connection():
     """Test basic connection to the server and show only totals"""
     print("🔌 Connecting to MCP server...")
 
-    client = Client(SERVER_URL)
+    # Crear contexto SSL que ignore certificados autofirmados
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    # Configurar cliente con SSL personalizado
+    client = Client(SERVER_URL, ssl=ssl_context)
 
     async with client:
         # Ping the server
@@ -68,7 +75,11 @@ async def test_connection():
 
 async def test_tool_call(tool_name: str, arguments: dict):
     """Example of calling a tool and showing only totals"""
-    client = Client(SERVER_URL)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    client = Client(SERVER_URL, ssl=ssl_context)
 
     async with client:
         try:
@@ -91,7 +102,6 @@ async def main():
     """Main function"""
     print("\n🔍 MCP CLIENT - ZOHO BOOKS (Totals Summary)\n")
     await test_connection()
-
     # Example of calling a tool with parameters (uncomment and adjust)
     # await test_tool_call("YourToolName", {"param1": "value1"})
 

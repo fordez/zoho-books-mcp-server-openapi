@@ -5,8 +5,8 @@ services:
     build: .
     container_name: zoho-mcp-server
     restart: unless-stopped
-    ports:
-      - "8080:8080" # Mantener puerto expuesto para testing
+    expose:
+      - "8080"
     environment:
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
@@ -18,16 +18,11 @@ services:
     networks:
       - mcp-network
 
-  nginx:
-    image: nginx:alpine
-    container_name: zoho-mcp-nginx
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: zoho-mcp-cloudflare-tunnel
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro # Monta tus certificados autofirmados
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     depends_on:
       - zoho-mcp
     networks:
