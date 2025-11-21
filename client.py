@@ -3,7 +3,7 @@ import asyncio
 from fastmcp import Client
 
 # MCP server URL
-SERVER_URL = "http://147.93.28.130:8080/mcp"
+SERVER_URL = "https://147.93.28.130:8080/mcp"
 
 
 async def test_connection():
