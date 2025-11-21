@@ -1,0 +1,71 @@
+# ====================================================
+# 🔹 GESTIÓN DEL SERVICIO
+# ====================================================
+
+# Iniciar servicio
+docker compose up -d
+
+# Detener servicio
+docker compose down
+
+# Reiniciar servicio
+docker compose restart
+
+# Reconstruir y reiniciar
+docker compose up -d --build
+
+# ====================================================
+# 🔹 MONITOREO Y DEBUG
+# ====================================================
+
+# Ver logs en tiempo real
+docker compose logs -f
+
+# Ver logs de las últimas 100 líneas
+docker compose logs --tail=100
+
+# Ver estado de contenedores
+docker compose ps
+
+# Ver uso de recursos
+docker stats
+
+# Entrar al contenedor (para debug)
+docker compose exec zoho-mcp bash
+
+# ====================================================
+# 🔹 ACTUALIZACIÓN
+# ====================================================
+
+# Actualizar código sin rebuild
+docker compose down
+# Actualiza tus archivos (git pull, scp, etc.)
+docker compose up -d
+
+# Actualizar con rebuild completo
+docker compose down
+docker compose build --no-cache
+docker compose up -d
+
+# ====================================================
+# 🔹 LIMPIEZA
+# ====================================================
+
+# Detener y eliminar contenedores, redes
+docker compose down
+
+# Eliminar también volúmenes
+docker compose down -v
+
+# Limpiar imágenes sin usar
+docker system prune -a
+
+# ====================================================
+# 🔹 BACKUP Y RESTAURACIÓN
+# ====================================================
+
+# Backup de la configuración
+tar -czf zoho-mcp-backup.tar.gz ~/zoho-mcp-server
+
+# Restaurar desde backup
+tar -xzf zoho-mcp-backup.tar.gz -C ~/
