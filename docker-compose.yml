@@ -1,12 +1,10 @@
-version: "3.8"
-
 services:
   zoho-mcp:
     build: .
     container_name: zoho-mcp-server
     restart: unless-stopped
-    expose:
-      - "8080"
+    ports:
+      - "8080:8080" # ← AGREGA ESTO (antes funcionaba así)
     environment:
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
