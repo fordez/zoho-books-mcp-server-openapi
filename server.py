@@ -246,13 +246,16 @@ def filter_openapi_paths(spec: dict) -> dict:
 def build_mcp() -> FastMCP:
     access_token = get_access_token()
 
-    # ⚠️ CRÍTICO: Usar AsyncClient para operaciones asíncronas
+    # ⚠️ CRÍTICO: organization_id debe ir en params, NO en headers
+    # Zoho Books requiere: ?organization_id=XXXXX en cada request
     client = httpx.AsyncClient(
         base_url=Config.base_url,
         headers={
             "Authorization": f"Zoho-oauthtoken {access_token}",
             "Content-Type": "application/json;charset=UTF-8",
-            "organization_id": Config.organization_id,
+        },
+        params={
+            "organization_id": Config.organization_id,  # ✅ Como query param
         },
         timeout=30.0,
     )
