@@ -147,18 +147,33 @@ class ZohoAsyncClient(httpx.AsyncClient):
         if method.upper() in ["POST", "PUT", "PATCH"] and "json" in kwargs:
             json_data = kwargs.pop("json")
 
+            # Serializar JSON sin espacios extras
+            json_string = json.dumps(json_data, separators=(",", ":"))
+
+            logger.info(f"🔄 {method} {url}")
+            logger.info(f"📦 Original data: {json_data}")
+            logger.info(f"📝 JSONString: {json_string}")
+
             # Convertir a formato form-urlencoded con JSONString
-            kwargs["data"] = {"JSONString": json.dumps(json_data)}
+            kwargs["data"] = {"JSONString": json_string}
 
             # Cambiar content-type
             if "headers" not in kwargs:
                 kwargs["headers"] = {}
             kwargs["headers"]["Content-Type"] = "application/x-www-form-urlencoded"
 
-            logger.debug(f"🔄 Transformed {method} request with JSONString")
-
         # Ejecutar request normal
-        return await super().request(method, url, **kwargs)
+        response = await super().request(method, url, **kwargs)
+
+        # Log de respuesta para debugging
+        if response.status_code >= 400:
+            try:
+                error_data = response.json()
+                logger.error(f"❌ API Error: {error_data}")
+            except:
+                logger.error(f"❌ API Error: {response.text}")
+
+        return response
 
 
 # ====================================================
