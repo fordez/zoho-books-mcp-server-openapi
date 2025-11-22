@@ -4,7 +4,7 @@ from fastmcp import Client
 
 # MCP server URL
 # SERVER_URL = "https://c1e4f60de254.ngrok-free.app/mcp"
-SERVER_URL = "http://localhost:808/mcp"
+SERVER_URL = "http://localhost:8080/mcp"
 
 
 async def test_connection():

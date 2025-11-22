@@ -173,10 +173,11 @@ ALLOWED_TOOLS = {
 
 
 # ====================================================
-# 🔹 Obtener token Zoho (síncrono)
+# 🔹 Obtener token Zoho (síncrono - solo para inicialización)
 # ====================================================
 @lru_cache(maxsize=1)
 def get_access_token() -> str:
+    """Obtiene el token solo durante la inicialización (síncrono)"""
     token_url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
         "refresh_token": Config.refresh_token,
@@ -240,13 +241,13 @@ def filter_openapi_paths(spec: dict) -> dict:
 
 
 # ====================================================
-# 🔹 Construcción MCP SÍNCRONA
+# 🔹 Construcción MCP ASÍNCRONA
 # ====================================================
 def build_mcp() -> FastMCP:
     access_token = get_access_token()
 
-    # Cliente Zoho síncrono
-    client = httpx.Client(
+    # ⚠️ CRÍTICO: Usar AsyncClient para operaciones asíncronas
+    client = httpx.AsyncClient(
         base_url=Config.base_url,
         headers={
             "Authorization": f"Zoho-oauthtoken {access_token}",
