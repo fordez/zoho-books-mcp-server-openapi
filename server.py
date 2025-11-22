@@ -1,7 +1,9 @@
 import glob
+import json
 import logging
 import os
 from functools import lru_cache
+from typing import Any
 
 import httpx
 import yaml
@@ -23,157 +25,144 @@ logger = logging.getLogger(__name__)
 # ====================================================
 # 🤖 HERRAMIENTAS ESENCIALES PARA AI AGENT (85 tools)
 # ====================================================
-# Basado en patrones de agentes AI en contabilidad:
-# - Automatización de workflows end-to-end
-# - Procesamiento de documentos y extracción de datos
-# - Reconciliación y matching automático
-# - Detección de anomalías en tiempo real
-# - Gestión de ciclo de vida completo de transacciones
-# ====================================================
-
 ALLOWED_TOOLS = {
-    # ============================================
-    # 🧾 INVOICES - Ciclo completo (12 tools)
-    # ============================================
-    # Agente necesita: buscar, crear, leer, actualizar, enviar
-    "list_invoices",  # 🔍 Búsqueda/filtrado de facturas
-    "get_invoice",  # 📄 Detalle completo
-    "create_invoice",  # ➕ Generación automática
-    "update_invoice",  # ✏️ Modificación
-    "delete_invoice",  # 🗑️ Eliminación
-    "email_invoice",  # 📧 Envío automatizado
-    "mark_invoice_sent",  # ✅ Estado enviado
-    "mark_invoice_void",  # ❌ Anulación
-    # Gestión de pagos vinculados
-    "list_invoice_payments",  # 💰 Pagos recibidos
-    "apply_credits_to_invoice",  # 🔄 Aplicar créditos
-    # Adjuntos para verificación
+    # ============ INVOICES (12 tools) ============
+    "list_invoices",
+    "get_invoice",
+    "create_invoice",
+    "update_invoice",
+    "delete_invoice",
+    "email_invoice",
+    "mark_invoice_sent",
+    "mark_invoice_void",
+    "list_invoice_payments",
+    "apply_credits_to_invoice",
     "get_invoice_attachment",
     "add_invoice_attachment",
-    # ============================================
-    # 📋 BILLS - Cuentas por pagar (11 tools)
-    # ============================================
-    # Agente necesita: recepción, matching, pago
-    "list_bills",  # 🔍 Búsqueda de facturas proveedor
-    "get_bill",  # 📄 Detalle
-    "create_bill",  # ➕ Registro automático (OCR)
-    "update_bill",  # ✏️ Correcciones
-    "delete_bill",  # 🗑️ Eliminación
-    "mark_bill_void",  # ❌ Anulación
-    "mark_bill_open",  # 🔓 Reabrir
-    # Pagos y reconciliación
-    "list_bill_payments",  # 💰 Historial de pagos
-    "apply_credits_to_bill",  # 🔄 Aplicar créditos
-    # Adjuntos (crítico para OCR/verificación)
+    # ============ BILLS (11 tools) ============
+    "list_bills",
+    "get_bill",
+    "create_bill",
+    "update_bill",
+    "delete_bill",
+    "mark_bill_void",
+    "mark_bill_open",
+    "list_bill_payments",
+    "apply_credits_to_bill",
     "get_bill_attachment",
     "add_bill_attachment",
-    # ============================================
-    # 👥 CONTACTS - Clientes/Proveedores (10 tools)
-    # ============================================
-    # Agente necesita: verificar, crear, actualizar
-    "list_contacts",  # 🔍 Búsqueda de contactos
-    "get_contact",  # 📄 Información completa
-    "create_contact",  # ➕ Registro automático
-    "update_contact",  # ✏️ Actualización de datos
-    "delete_contact",  # 🗑️ Eliminación
-    "mark_contact_active",  # ✅ Activar
-    "mark_contact_inactive",  # ⏸️ Desactivar
-    # Direcciones para matching/validación
+    # ============ CONTACTS (10 tools) ============
+    "list_contacts",
+    "get_contact",
+    "create_contact",
+    "update_contact",
+    "delete_contact",
+    "mark_contact_active",
+    "mark_contact_inactive",
     "add_contact_address",
     "update_contact_address",
     "delete_contact_address",
-    # ============================================
-    # 📦 ITEMS - Productos/Servicios (8 tools)
-    # ============================================
-    # Agente necesita: catálogo, pricing, inventory
-    "list_items",  # 🔍 Búsqueda de productos
-    "get_item",  # 📄 Detalle completo
-    "create_item",  # ➕ Nuevo producto
-    "update_item",  # ✏️ Actualizar precio/stock
-    "delete_item",  # 🗑️ Eliminación
-    "list_item_details",  # 📊 Detalles extendidos
-    "mark_item_active",  # ✅ Activar
-    "mark_item_inactive",  # ⏸️ Desactivar
-    # ============================================
-    # 💸 EXPENSES - Gastos (8 tools)
-    # ============================================
-    # Agente necesita: registro, categorización, adjuntos
-    "list_expenses",  # 🔍 Búsqueda de gastos
-    "get_expense",  # 📄 Detalle
-    "create_expense",  # ➕ Registro automático
-    "update_expense",  # ✏️ Corrección/categorización
-    "delete_expense",  # 🗑️ Eliminación
-    # Recibos (crítico para AI - OCR)
+    # ============ ITEMS (8 tools) ============
+    "list_items",
+    "get_item",
+    "create_item",
+    "update_item",
+    "delete_item",
+    "list_item_details",
+    "mark_item_active",
+    "mark_item_inactive",
+    # ============ EXPENSES (8 tools) ============
+    "list_expenses",
+    "get_expense",
+    "create_expense",
+    "update_expense",
+    "delete_expense",
     "get_expense_receipt",
     "create_expense_receipt",
     "delete_expense_receipt",
-    # ============================================
-    # 💳 VENDOR PAYMENTS - Pagos a proveedores (6 tools)
-    # ============================================
-    # Agente necesita: programar, ejecutar, reconciliar
-    "list_vendor_payments",  # 🔍 Historial de pagos
-    "get_vendor_payment",  # 📄 Detalle de pago
-    "create_vendor_payment",  # ➕ Registro de pago
-    "update_vendor_payment",  # ✏️ Modificación
-    "delete_vendor_payment",  # 🗑️ Eliminación
-    "email_vendor_payment",  # 📧 Notificación
-    # ============================================
-    # 🏢 VENDORS - Gestión de proveedores (5 tools)
-    # ============================================
-    "list_vendors",  # 🔍 Búsqueda de proveedores
-    "get_vendor",  # 📄 Información completa
-    "create_vendor",  # ➕ Registro automático
-    "update_vendor",  # ✏️ Actualización
-    "delete_vendor",  # 🗑️ Eliminación
-    # ============================================
-    # 📝 ESTIMATES - Cotizaciones (7 tools)
-    # ============================================
-    # Agente necesita: generar, enviar, tracking
-    "list_estimates",  # 🔍 Búsqueda
-    "get_estimate",  # 📄 Detalle
-    "create_estimate",  # ➕ Generación automática
-    "update_estimate",  # ✏️ Modificación
-    "delete_estimate",  # 🗑️ Eliminación
-    "mark_estimate_accepted",  # ✅ Aceptado (→ convertir)
-    "email_estimate",  # 📧 Envío
-    # ============================================
-    # 🛒 SALES ORDERS - Órdenes de venta (7 tools)
-    # ============================================
-    "list_sales_orders",  # 🔍 Búsqueda
-    "get_sales_order",  # 📄 Detalle
-    "create_sales_order",  # ➕ Creación
-    "update_sales_order",  # ✏️ Modificación
-    "delete_sales_order",  # 🗑️ Eliminación
-    "mark_sales_order_as_void",  # ❌ Anular
-    "email_sales_order",  # 📧 Envío
-    # ============================================
-    # 🛍️ PURCHASE ORDERS - Órdenes de compra (6 tools)
-    # ============================================
-    "list_purchase_orders",  # 🔍 Búsqueda
-    "get_purchase_order",  # 📄 Detalle
-    "create_purchase_order",  # ➕ Creación
-    "update_purchase_order",  # ✏️ Modificación
-    "delete_purchase_order",  # 🗑️ Eliminación
-    "list_purchase_order_comments",  # 💬 Seguimiento
-    # ============================================
-    # 👤 USERS - Gestión básica (3 tools)
-    # ============================================
-    "list_users",  # 🔍 Lista de usuarios
-    "get_user",  # 📄 Info de usuario
-    "get_current_user",  # 🔐 Usuario actual
-    # ============================================
-    # 🎯 PROJECTS - Seguimiento básico (2 tools)
-    # ============================================
-    # Solo lectura para tracking, no gestión compleja
-    "list_projects",  # 🔍 Lista de proyectos
-    "get_project",  # 📄 Detalle de proyecto
+    # ============ VENDOR PAYMENTS (6 tools) ============
+    "list_vendor_payments",
+    "get_vendor_payment",
+    "create_vendor_payment",
+    "update_vendor_payment",
+    "delete_vendor_payment",
+    "email_vendor_payment",
+    # ============ VENDORS (5 tools) ============
+    "list_vendors",
+    "get_vendor",
+    "create_vendor",
+    "update_vendor",
+    "delete_vendor",
+    # ============ ESTIMATES (7 tools) ============
+    "list_estimates",
+    "get_estimate",
+    "create_estimate",
+    "update_estimate",
+    "delete_estimate",
+    "mark_estimate_accepted",
+    "email_estimate",
+    # ============ SALES ORDERS (7 tools) ============
+    "list_sales_orders",
+    "get_sales_order",
+    "create_sales_order",
+    "update_sales_order",
+    "delete_sales_order",
+    "mark_sales_order_as_void",
+    "email_sales_order",
+    # ============ PURCHASE ORDERS (6 tools) ============
+    "list_purchase_orders",
+    "get_purchase_order",
+    "create_purchase_order",
+    "update_purchase_order",
+    "delete_purchase_order",
+    "list_purchase_order_comments",
+    # ============ USERS (3 tools) ============
+    "list_users",
+    "get_user",
+    "get_current_user",
+    # ============ PROJECTS (2 tools) ============
+    "list_projects",
+    "get_project",
 }
-
-# Total: 85 tools optimizadas para AI Agent
 
 
 # ====================================================
-# 🔹 Obtener token Zoho (síncrono - solo para inicialización)
+# 🔧 Zoho API Client Wrapper
+# ====================================================
+class ZohoAsyncClient(httpx.AsyncClient):
+    """
+    Cliente personalizado que transforma requests para Zoho Books API.
+    Zoho requiere que POST/PUT envíen datos como form-data con JSONString.
+    """
+
+    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """
+        Intercepta y transforma requests para el formato de Zoho Books.
+
+        GET: Mantiene query params normales
+        POST/PUT/PATCH: Convierte JSON body a form-data con JSONString
+        """
+
+        # Si hay JSON body en POST/PUT/PATCH, convertir a formato Zoho
+        if method.upper() in ["POST", "PUT", "PATCH"] and "json" in kwargs:
+            json_data = kwargs.pop("json")
+
+            # Convertir a formato form-urlencoded con JSONString
+            kwargs["data"] = {"JSONString": json.dumps(json_data)}
+
+            # Cambiar content-type
+            if "headers" not in kwargs:
+                kwargs["headers"] = {}
+            kwargs["headers"]["Content-Type"] = "application/x-www-form-urlencoded"
+
+            logger.debug(f"🔄 Transformed {method} request with JSONString")
+
+        # Ejecutar request normal
+        return await super().request(method, url, **kwargs)
+
+
+# ====================================================
+# 🔹 Obtener token Zoho
 # ====================================================
 @lru_cache(maxsize=1)
 def get_access_token() -> str:
@@ -200,10 +189,7 @@ def get_access_token() -> str:
 # 🔹 Filtrar paths del OpenAPI
 # ====================================================
 def filter_openapi_paths(spec: dict) -> dict:
-    """
-    Filtra los paths del OpenAPI para incluir solo los operationId
-    que están en ALLOWED_TOOLS
-    """
+    """Filtra los paths del OpenAPI para incluir solo ALLOWED_TOOLS"""
     if not spec or "paths" not in spec:
         return spec
 
@@ -220,7 +206,6 @@ def filter_openapi_paths(spec: dict) -> dict:
 
             operation_id = operation.get("operationId")
 
-            # Solo incluir si el operationId está en la lista permitida
             if operation_id in ALLOWED_TOOLS:
                 filtered_path_item[method] = operation
                 included_count += 1
@@ -229,7 +214,6 @@ def filter_openapi_paths(spec: dict) -> dict:
                 excluded_count += 1
                 logger.debug(f"⏭️  Skipping: {operation_id}")
 
-        # Solo agregar el path si tiene operaciones permitidas
         if filtered_path_item:
             filtered_paths[path] = filtered_path_item
 
@@ -241,28 +225,23 @@ def filter_openapi_paths(spec: dict) -> dict:
 
 
 # ====================================================
-# 🔹 Construcción MCP ASÍNCRONA
+# 🔹 Construcción MCP
 # ====================================================
 def build_mcp() -> FastMCP:
     access_token = get_access_token()
 
-    # ⚠️ CRÍTICO: organization_id debe ir en params, NO en headers
-    # Zoho Books requiere: ?organization_id=XXXXX en cada request
-    client = httpx.AsyncClient(
+    # ✅ Usar ZohoAsyncClient personalizado con transformación JSONString
+    client = ZohoAsyncClient(
         base_url=Config.base_url,
         headers={
             "Authorization": f"Zoho-oauthtoken {access_token}",
-            "Content-Type": "application/json;charset=UTF-8",
         },
         params={
-            "organization_id": Config.organization_id,  # ✅ Como query param
+            "organization_id": Config.organization_id,
         },
         timeout=30.0,
     )
 
-    # ====================================================
-    # 🔹 Route maps básicos
-    # ====================================================
     route_maps = [
         RouteMap(pattern=r"^/admin/.*", mcp_type=MCPType.EXCLUDE),
         RouteMap(tags={"internal"}, mcp_type=MCPType.EXCLUDE),
@@ -298,9 +277,7 @@ def build_mcp() -> FastMCP:
         "tags": combined_tags,
     }
 
-    # ====================================================
-    # 🔹 FILTRAR SPEC ANTES DE CREAR MCP
-    # ====================================================
+    # Filtrar antes de crear MCP
     logger.info(f"📋 Total paths before filtering: {len(combined_spec['paths'])}")
     combined_spec = filter_openapi_paths(combined_spec)
     logger.info(f"✅ Total paths after filtering: {len(combined_spec['paths'])}")
@@ -308,9 +285,6 @@ def build_mcp() -> FastMCP:
 
     logger.info("🚀 Building MCP from filtered OpenAPI spec")
 
-    # ====================================================
-    # 🔹 CREAR MCP
-    # ====================================================
     return FastMCP.from_openapi(
         openapi_spec=combined_spec,
         client=client,
