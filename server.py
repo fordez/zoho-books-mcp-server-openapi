@@ -273,10 +273,38 @@ def get_access_token() -> str:
 
 
 # ====================================================
-# 🔹 Filtrar paths del OpenAPI
+# 🔹 Resolver referencias del OpenAPI
+# ====================================================
+def resolve_ref(ref: str, spec: dict) -> dict:
+    """
+    Intenta resolver una referencia $ref en el spec.
+    Si no existe, retorna un schema genérico.
+    """
+    if not ref or not ref.startswith("#/"):
+        return {}
+
+    # Parsear la referencia: #/components/schemas/schema-name
+    parts = ref.split("/")[1:]  # Quitar el #
+
+    current = spec
+    for part in parts:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        else:
+            logger.debug(f"⚠️ Could not resolve reference: {ref}")
+            return None
+
+    return current if isinstance(current, dict) else None
+
+
+# ====================================================
+# 🔹 Filtrar y CORREGIR paths del OpenAPI
 # ====================================================
 def filter_openapi_paths(spec: dict) -> dict:
-    """Filtra los paths del OpenAPI para incluir solo ALLOWED_TOOLS"""
+    """
+    Filtra los paths del OpenAPI para incluir solo ALLOWED_TOOLS
+    y CORRIGE los schemas vacíos o con referencias rotas para POST/PUT/PATCH
+    """
     logger.info("🔍 Starting OpenAPI paths filtering...")
 
     if not spec or "paths" not in spec:
@@ -297,6 +325,62 @@ def filter_openapi_paths(spec: dict) -> dict:
             operation_id = operation.get("operationId")
 
             if operation_id in ALLOWED_TOOLS:
+                # ✅ CORRECCIÓN: Si es POST/PUT/PATCH, verificar y arreglar requestBody
+                if method.lower() in ["post", "put", "patch"]:
+                    request_body = operation.get("requestBody", {})
+                    content = request_body.get("content", {})
+                    json_content = content.get("application/json", {})
+                    schema = json_content.get("schema", {})
+
+                    needs_fix = False
+
+                    # Caso 1: Schema tiene $ref
+                    if "$ref" in schema:
+                        ref = schema["$ref"]
+                        logger.debug(f"   🔗 Found $ref: {ref}")
+
+                        # Intentar resolver la referencia
+                        resolved = resolve_ref(ref, spec)
+
+                        if resolved:
+                            # Reemplazar $ref con el schema resuelto
+                            schema = resolved
+                            logger.debug(f"   ✅ Resolved $ref successfully")
+                        else:
+                            # No se pudo resolver, crear schema genérico
+                            logger.warning(f"   ⚠️ Could not resolve $ref: {ref}")
+                            needs_fix = True
+
+                    # Caso 2: Schema vacío o sin properties
+                    elif not schema.get("properties") and not schema.get(
+                        "additionalProperties"
+                    ):
+                        logger.warning(f"   ⚠️ {operation_id} has empty schema")
+                        needs_fix = True
+
+                    # Si necesita arreglo, crear schema genérico
+                    if needs_fix:
+                        logger.info(f"   🔧 Creating generic schema for {operation_id}")
+
+                        schema = {
+                            "type": "object",
+                            "additionalProperties": True,
+                            "description": f"Request body for {operation_id}. Accepts any valid JSON object.",
+                        }
+
+                    # Actualizar el operation con el schema (resuelto o genérico)
+                    if "requestBody" not in operation:
+                        operation["requestBody"] = {}
+                    if "content" not in operation["requestBody"]:
+                        operation["requestBody"]["content"] = {}
+                    if "application/json" not in operation["requestBody"]["content"]:
+                        operation["requestBody"]["content"]["application/json"] = {}
+
+                    operation["requestBody"]["content"]["application/json"][
+                        "schema"
+                    ] = schema
+                    operation["requestBody"]["required"] = True
+
                 filtered_path_item[method] = operation
                 included_count += 1
                 logger.debug(f"✅ Including: {operation_id} ({method.upper()} {path})")
@@ -320,6 +404,10 @@ def filter_openapi_paths(spec: dict) -> dict:
                             )
                         if "required" in schema:
                             logger.debug(f"   ⚠️  Required fields: {schema['required']}")
+                        if "additionalProperties" in schema:
+                            logger.debug(
+                                f"   🔓 Additional properties: {schema['additionalProperties']}"
+                            )
             else:
                 excluded_count += 1
                 logger.debug(f"⏭️  Skipping: {operation_id}")
