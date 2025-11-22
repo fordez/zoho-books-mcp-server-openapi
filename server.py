@@ -9,7 +9,6 @@ import httpx
 import yaml
 from fastmcp import FastMCP
 from fastmcp.experimental.server.openapi import MCPType, RouteMap
-from fastmcp.prompts.prompt import PromptMessage, TextContent
 
 from config import Config
 
@@ -38,7 +37,7 @@ ALLOWED_TOOLS = {
     "apply_credits_to_invoice",
     "get_invoice_attachment",
     "add_invoice_attachment",
-    # ... (all your other tools, unchanged)
+    # ... (all your other tools unchanged)
 }
 
 
@@ -182,48 +181,12 @@ def build_mcp() -> FastMCP:
     logger.info(f"✅ Total paths after filtering: {len(combined_spec['paths'])}")
     logger.info(f"🎯 Total allowed tools: {len(ALLOWED_TOOLS)}")
 
-    mcp = FastMCP.from_openapi(
+    return FastMCP.from_openapi(
         openapi_spec=combined_spec,
         client=client,
         route_maps=route_maps,
         name="zoho-mcp-ai-agent",
     )
-
-    # Add a prompt to validate parameters
-    @mcp.prompt
-    async def validate_tool_params(tool_name: str, params: dict) -> PromptMessage:
-        """Return which parameters are required for a tool"""
-        if tool_name not in ALLOWED_TOOLS:
-            return PromptMessage(
-                role="assistant",
-                content=TextContent(type="text", text=f"Unknown tool: {tool_name}"),
-            )
-        # Get operationId from OpenAPI
-        for path_item in combined_spec["paths"].values():
-            for op in path_item.values():
-                if op.get("operationId") == tool_name:
-                    required = (
-                        op.get("requestBody", {})
-                        .get("content", {})
-                        .get("application/json", {})
-                        .get("schema", {})
-                        .get("required", [])
-                    )
-                    return PromptMessage(
-                        role="assistant",
-                        content=TextContent(
-                            type="text",
-                            text=f"Tool '{tool_name}' requires the following parameters: {required}",
-                        ),
-                    )
-        return PromptMessage(
-            role="assistant",
-            content=TextContent(
-                type="text", text=f"Tool '{tool_name}' has no parameters"
-            ),
-        )
-
-    return mcp
 
 
 # ====================================================
