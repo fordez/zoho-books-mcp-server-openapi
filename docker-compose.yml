@@ -18,11 +18,13 @@ services:
     networks:
       - mcp-network
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: zoho-mcp-cloudflare-tunnel
+  ngrok:
+    image: wernight/ngrok
+    container_name: zoho-mcp-ngrok
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_TOKEN} # tu token de ngrok
+      NGROK_PORT: zoho-mcp:8080 # apunta al contenedor MCP
     depends_on:
       - zoho-mcp
     networks:
