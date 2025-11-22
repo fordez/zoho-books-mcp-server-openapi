@@ -3,7 +3,8 @@ import asyncio
 from fastmcp import Client
 
 # MCP server URL
-SERVER_URL = "http://147.93.28.130/mcp"
+# SERVER_URL = "https://c1e4f60de254.ngrok-free.app/mcp"
+SERVER_URL = "http://localhost:808/mcp"
 
 
 async def test_connection():
