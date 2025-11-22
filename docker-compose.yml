@@ -1,5 +1,4 @@
 version: "3.8"
-
 services:
   zoho-mcp:
     build: .
@@ -19,12 +18,16 @@ services:
       - mcp-network
 
   ngrok:
-    image: wernight/ngrok
+    image: ngrok/ngrok:latest
     container_name: zoho-mcp-ngrok
     restart: unless-stopped
+    command:
+      - "http"
+      - "zoho-mcp:8080"
     environment:
-      NGROK_AUTHTOKEN: ${NGROK_TOKEN} # tu token de ngrok
-      NGROK_PORT: zoho-mcp:8080 # apunta al contenedor MCP
+      NGROK_AUTHTOKEN: ${NGROK_TOKEN}
+    ports:
+      - "4040:4040" # Puerto para la interfaz web de ngrok
     depends_on:
       - zoho-mcp
     networks:
