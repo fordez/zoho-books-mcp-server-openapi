@@ -1,9 +1,7 @@
 import glob
-import json
 import logging
 import os
 from functools import lru_cache
-from typing import Any
 
 import httpx
 import yaml
@@ -11,239 +9,26 @@ from fastmcp import FastMCP
 from fastmcp.experimental.server.openapi import MCPType, RouteMap
 
 from config import Config
+from src.constants import ALLOWED_TOOLS
+from src.openapi_utils import (
+    add_missing_request_schemas, 
+    filter_openapi_paths,
+    remove_all_refs_from_schemas,
+    fix_parameter_schemas  # 🔥 NUEVA FUNCIÓN
+)
+from src.zoho_client import ZohoAsyncClient
 
 # ====================================================
 # 🔹 Logging DETALLADO
 # ====================================================
 logging.basicConfig(
-    level=logging.DEBUG,  # 🔍 Cambiado a DEBUG para ver TODO
+    level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 # También activar logs de httpx para ver requests completas
 logging.getLogger("httpx").setLevel(logging.DEBUG)
-
-
-# ====================================================
-# 🤖 HERRAMIENTAS ESENCIALES PARA AI AGENT (85 tools)
-# ====================================================
-ALLOWED_TOOLS = {
-    # ============ INVOICES (12 tools) ============
-    "list_invoices",
-    "get_invoice",
-    "create_invoice",
-    "update_invoice",
-    "delete_invoice",
-    "email_invoice",
-    "mark_invoice_sent",
-    "mark_invoice_void",
-    "list_invoice_payments",
-    "apply_credits_to_invoice",
-    "get_invoice_attachment",
-    "add_invoice_attachment",
-    # ============ BILLS (11 tools) ============
-    "list_bills",
-    "get_bill",
-    "create_bill",
-    "update_bill",
-    "delete_bill",
-    "mark_bill_void",
-    "mark_bill_open",
-    "list_bill_payments",
-    "apply_credits_to_bill",
-    "get_bill_attachment",
-    "add_bill_attachment",
-    # ============ CONTACTS (10 tools) ============
-    "list_contacts",
-    "get_contact",
-    "create_contact",
-    "update_contact",
-    "delete_contact",
-    "mark_contact_active",
-    "mark_contact_inactive",
-    "add_contact_address",
-    "update_contact_address",
-    "delete_contact_address",
-    # ============ ITEMS (8 tools) ============
-    "list_items",
-    "get_item",
-    "create_item",
-    "update_item",
-    "delete_item",
-    "list_item_details",
-    "mark_item_active",
-    "mark_item_inactive",
-    # ============ EXPENSES (8 tools) ============
-    "list_expenses",
-    "get_expense",
-    "create_expense",
-    "update_expense",
-    "delete_expense",
-    "get_expense_receipt",
-    "create_expense_receipt",
-    "delete_expense_receipt",
-    # ============ VENDOR PAYMENTS (6 tools) ============
-    "list_vendor_payments",
-    "get_vendor_payment",
-    "create_vendor_payment",
-    "update_vendor_payment",
-    "delete_vendor_payment",
-    "email_vendor_payment",
-    # ============ VENDORS (5 tools) ============
-    "list_vendors",
-    "get_vendor",
-    "create_vendor",
-    "update_vendor",
-    "delete_vendor",
-    # ============ ESTIMATES (7 tools) ============
-    "list_estimates",
-    "get_estimate",
-    "create_estimate",
-    "update_estimate",
-    "delete_estimate",
-    "mark_estimate_accepted",
-    "email_estimate",
-    # ============ SALES ORDERS (7 tools) ============
-    "list_sales_orders",
-    "get_sales_order",
-    "create_sales_order",
-    "update_sales_order",
-    "delete_sales_order",
-    "mark_sales_order_as_void",
-    "email_sales_order",
-    # ============ PURCHASE ORDERS (6 tools) ============
-    "list_purchase_orders",
-    "get_purchase_order",
-    "create_purchase_order",
-    "update_purchase_order",
-    "delete_purchase_order",
-    "list_purchase_order_comments",
-    # ============ USERS (3 tools) ============
-    "list_users",
-    "get_user",
-    "get_current_user",
-    # ============ PROJECTS (2 tools) ============
-    "list_projects",
-    "get_project",
-}
-
-
-# ====================================================
-# 🔧 Zoho API Client Wrapper CON LOGGING COMPLETO
-# ====================================================
-class ZohoAsyncClient(httpx.AsyncClient):
-    """
-    Cliente personalizado que transforma requests para Zoho Books API.
-    Zoho requiere que POST/PUT envíen datos como form-data con JSONString.
-    """
-
-    async def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """
-        Intercepta y transforma requests para el formato de Zoho Books.
-
-        GET: Mantiene query params normales
-        POST/PUT/PATCH: Convierte JSON body a form-data con JSONString
-        """
-
-        logger.info("=" * 80)
-        logger.info(f"🔵 INCOMING REQUEST")
-        logger.info(f"📍 Method: {method}")
-        logger.info(f"🔗 URL: {url}")
-        logger.info(f"📦 kwargs keys: {kwargs.keys()}")
-
-        # Log de TODOS los kwargs
-        for key, value in kwargs.items():
-            if key == "headers":
-                logger.info(f"📋 Headers:")
-                for h_key, h_val in value.items():
-                    logger.info(f"   {h_key}: {h_val}")
-            elif key == "params":
-                logger.info(f"🔍 Params: {value}")
-            elif key == "json":
-                logger.info(f"📄 JSON body: {value}")
-                logger.info(f"📄 JSON type: {type(value)}")
-            elif key == "data":
-                logger.info(f"📝 Data body: {value}")
-            else:
-                logger.info(f"🔧 {key}: {value}")
-
-        # Si hay JSON body en POST/PUT/PATCH, convertir a formato Zoho
-        if method.upper() in ["POST", "PUT", "PATCH"]:
-            logger.info(f"🔄 Processing {method} request for Zoho format...")
-
-            if "json" in kwargs:
-                json_data = kwargs.pop("json")
-                logger.info(f"✅ Found JSON data in kwargs")
-                logger.info(f"📦 JSON data content: {json_data}")
-                logger.info(f"📦 JSON data type: {type(json_data)}")
-
-                # Validar que no sea None o vacío
-                if json_data is None:
-                    logger.error("❌ JSON data is None!")
-                    raise ValueError(f"Cannot {method}: JSON data is None")
-
-                if json_data == {}:
-                    logger.warning("⚠️ JSON data is empty dict!")
-
-                # Serializar JSON sin espacios extras
-                json_string = json.dumps(json_data, separators=(",", ":"))
-                logger.info(f"📝 Serialized JSONString: {json_string}")
-                logger.info(f"📝 JSONString length: {len(json_string)}")
-
-                # Convertir a formato form-urlencoded con JSONString
-                kwargs["data"] = {"JSONString": json_string}
-                logger.info(f"✅ Converted to form-data with JSONString")
-
-                # Cambiar content-type
-                if "headers" not in kwargs:
-                    kwargs["headers"] = {}
-                kwargs["headers"]["Content-Type"] = "application/x-www-form-urlencoded"
-                logger.info(f"✅ Set Content-Type to application/x-www-form-urlencoded")
-            else:
-                logger.warning(f"⚠️ No 'json' key found in kwargs for {method} request")
-                logger.info(f"Available kwargs keys: {list(kwargs.keys())}")
-
-        logger.info(f"🚀 Sending request to Zoho API...")
-        logger.info("=" * 80)
-
-        # Ejecutar request normal
-        response = await super().request(method, url, **kwargs)
-
-        # Log de respuesta COMPLETO
-        logger.info("=" * 80)
-        logger.info(f"📥 RESPONSE RECEIVED")
-        logger.info(f"📊 Status Code: {response.status_code}")
-        logger.info(f"📋 Response Headers:")
-        for h_key, h_val in response.headers.items():
-            logger.info(f"   {h_key}: {h_val}")
-
-        try:
-            response_json = response.json()
-            logger.info(
-                f"📄 Response Body (JSON): {json.dumps(response_json, indent=2)}"
-            )
-        except:
-            logger.info(f"📄 Response Body (Text): {response.text[:500]}")
-
-        logger.info("=" * 80)
-
-        # Log de errores con más detalle
-        if response.status_code >= 400:
-            logger.error(f"❌ HTTP ERROR {response.status_code}")
-            try:
-                error_data = response.json()
-                logger.error(f"❌ Error JSON: {json.dumps(error_data, indent=2)}")
-            except:
-                logger.error(f"❌ Error Text: {response.text}")
-
-            # Log del request que causó el error
-            logger.error(f"❌ Failed request details:")
-            logger.error(f"   Method: {method}")
-            logger.error(f"   URL: {url}")
-            logger.error(f"   Final kwargs: {kwargs}")
-
-        return response
 
 
 # ====================================================
@@ -273,156 +58,6 @@ def get_access_token() -> str:
 
 
 # ====================================================
-# 🔹 Resolver referencias del OpenAPI
-# ====================================================
-def resolve_ref(ref: str, spec: dict) -> dict:
-    """
-    Intenta resolver una referencia $ref en el spec.
-    Si no existe, retorna un schema genérico.
-    """
-    if not ref or not ref.startswith("#/"):
-        return {}
-
-    # Parsear la referencia: #/components/schemas/schema-name
-    parts = ref.split("/")[1:]  # Quitar el #
-
-    current = spec
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            logger.debug(f"⚠️ Could not resolve reference: {ref}")
-            return None
-
-    return current if isinstance(current, dict) else None
-
-
-# ====================================================
-# 🔹 Filtrar y CORREGIR paths del OpenAPI
-# ====================================================
-def filter_openapi_paths(spec: dict) -> dict:
-    """
-    Filtra los paths del OpenAPI para incluir solo ALLOWED_TOOLS
-    y CORRIGE los schemas vacíos o con referencias rotas para POST/PUT/PATCH
-    """
-    logger.info("🔍 Starting OpenAPI paths filtering...")
-
-    if not spec or "paths" not in spec:
-        logger.warning("⚠️ No paths found in OpenAPI spec")
-        return spec
-
-    filtered_paths = {}
-    included_count = 0
-    excluded_count = 0
-
-    for path, path_item in spec.get("paths", {}).items():
-        filtered_path_item = {}
-
-        for method, operation in path_item.items():
-            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
-                continue
-
-            operation_id = operation.get("operationId")
-
-            if operation_id in ALLOWED_TOOLS:
-                # ✅ CORRECCIÓN: Si es POST/PUT/PATCH, verificar y arreglar requestBody
-                if method.lower() in ["post", "put", "patch"]:
-                    request_body = operation.get("requestBody", {})
-                    content = request_body.get("content", {})
-                    json_content = content.get("application/json", {})
-                    schema = json_content.get("schema", {})
-
-                    needs_fix = False
-
-                    # Caso 1: Schema tiene $ref
-                    if "$ref" in schema:
-                        ref = schema["$ref"]
-                        logger.debug(f"   🔗 Found $ref: {ref}")
-
-                        # Intentar resolver la referencia
-                        resolved = resolve_ref(ref, spec)
-
-                        if resolved:
-                            # Reemplazar $ref con el schema resuelto
-                            schema = resolved
-                            logger.debug(f"   ✅ Resolved $ref successfully")
-                        else:
-                            # No se pudo resolver, crear schema genérico
-                            logger.warning(f"   ⚠️ Could not resolve $ref: {ref}")
-                            needs_fix = True
-
-                    # Caso 2: Schema vacío o sin properties
-                    elif not schema.get("properties") and not schema.get(
-                        "additionalProperties"
-                    ):
-                        logger.warning(f"   ⚠️ {operation_id} has empty schema")
-                        needs_fix = True
-
-                    # Si necesita arreglo, crear schema genérico
-                    if needs_fix:
-                        logger.info(f"   🔧 Creating generic schema for {operation_id}")
-
-                        schema = {
-                            "type": "object",
-                            "additionalProperties": True,
-                            "description": f"Request body for {operation_id}. Accepts any valid JSON object.",
-                        }
-
-                    # Actualizar el operation con el schema (resuelto o genérico)
-                    if "requestBody" not in operation:
-                        operation["requestBody"] = {}
-                    if "content" not in operation["requestBody"]:
-                        operation["requestBody"]["content"] = {}
-                    if "application/json" not in operation["requestBody"]["content"]:
-                        operation["requestBody"]["content"]["application/json"] = {}
-
-                    operation["requestBody"]["content"]["application/json"][
-                        "schema"
-                    ] = schema
-                    operation["requestBody"]["required"] = True
-
-                filtered_path_item[method] = operation
-                included_count += 1
-                logger.debug(f"✅ Including: {operation_id} ({method.upper()} {path})")
-
-                # Log detallado del schema para operaciones POST/PUT
-                if method.lower() in ["post", "put", "patch"]:
-                    request_body = operation.get("requestBody", {})
-                    logger.debug(
-                        f"   📋 Request body required: {request_body.get('required', False)}"
-                    )
-                    content = request_body.get("content", {})
-                    for content_type, schema_info in content.items():
-                        logger.debug(f"   📝 Content-Type: {content_type}")
-                        schema = schema_info.get("schema", {})
-                        logger.debug(
-                            f"   📦 Schema type: {schema.get('type', 'unknown')}"
-                        )
-                        if "properties" in schema:
-                            logger.debug(
-                                f"   🔑 Properties: {list(schema['properties'].keys())}"
-                            )
-                        if "required" in schema:
-                            logger.debug(f"   ⚠️  Required fields: {schema['required']}")
-                        if "additionalProperties" in schema:
-                            logger.debug(
-                                f"   🔓 Additional properties: {schema['additionalProperties']}"
-                            )
-            else:
-                excluded_count += 1
-                logger.debug(f"⏭️  Skipping: {operation_id}")
-
-        if filtered_path_item:
-            filtered_paths[path] = filtered_path_item
-
-    logger.info(
-        f"✅ Filtering complete: {included_count} included, {excluded_count} excluded"
-    )
-    spec["paths"] = filtered_paths
-    return spec
-
-
-# ====================================================
 # 🔹 Construcción MCP
 # ====================================================
 def build_mcp() -> FastMCP:
@@ -431,7 +66,7 @@ def build_mcp() -> FastMCP:
     access_token = get_access_token()
     logger.info(f"🔑 Access token (first 20 chars): {access_token[:20]}...")
 
-    # ✅ Usar ZohoAsyncClient personalizado con transformación JSONString
+    # 🔥 Cliente personalizado que SIMPLIFICA respuestas automáticamente
     client = ZohoAsyncClient(
         base_url=Config.base_url,
         headers={
@@ -459,6 +94,7 @@ def build_mcp() -> FastMCP:
 
     combined_paths = {}
     combined_tags = []
+    combined_schemas = {}
     info = {"title": "Zoho Books AI Agent API", "version": "1.0.0"}
 
     for path in yaml_files:
@@ -467,17 +103,26 @@ def build_mcp() -> FastMCP:
             with open(path, "r", encoding="utf-8") as f:
                 spec = yaml.safe_load(f)
 
-            if not spec or not spec.get("paths"):
-                logger.warning(f"⚠️ El archivo {path} no contiene paths válidos.")
+            if not spec:
                 continue
 
-            paths_count = len(spec.get("paths", {}))
-            logger.debug(
-                f"   ✅ Loaded {paths_count} paths from {os.path.basename(path)}"
-            )
+            # Combinar paths
+            if "paths" in spec:
+                paths_count = len(spec["paths"])
+                logger.debug(
+                    f"   ✅ Loaded {paths_count} paths from {os.path.basename(path)}"
+                )
+                combined_paths.update(spec["paths"])
 
-            combined_paths.update(spec.get("paths", {}))
-            combined_tags.extend(spec.get("tags", []))
+            # Combinar tags
+            if "tags" in spec:
+                combined_tags.extend(spec["tags"])
+
+            # Combinar schemas
+            if "components" in spec and "schemas" in spec["components"]:
+                schemas_count = len(spec["components"]["schemas"])
+                logger.debug(f"   📦 Loaded {schemas_count} schemas")
+                combined_schemas.update(spec["components"]["schemas"])
 
         except Exception as e:
             logger.error(f"❌ Error leyendo {path}: {e}")
@@ -487,15 +132,32 @@ def build_mcp() -> FastMCP:
         "info": info,
         "paths": combined_paths,
         "tags": combined_tags,
+        "components": {"schemas": combined_schemas},
     }
 
-    # Filtrar antes de crear MCP
-    logger.info(f"📋 Total paths before filtering: {len(combined_spec['paths'])}")
-    combined_spec = filter_openapi_paths(combined_spec)
+    logger.info(f"📋 Total paths: {len(combined_spec['paths'])}")
+    logger.info(f"📦 Total schemas loaded: {len(combined_schemas)}")
+
+    # 🔥 ORDEN CORRECTO DE TRANSFORMACIONES:
+    # 1. Primero agregar schemas faltantes (analiza TODOS los paths)
+    combined_spec = add_missing_request_schemas(combined_spec)
+
+    # 2. Limpiar todas las referencias $ref rotas
+    combined_spec = remove_all_refs_from_schemas(combined_spec)
+
+    # 3. 🔥 NUEVO: Arreglar esquemas de parámetros (page, per_page, etc)
+    combined_spec = fix_parameter_schemas(combined_spec)
+
+    # 4. Luego filtrar paths (solo incluye ALLOWED_TOOLS)
+    combined_spec = filter_openapi_paths(combined_spec, ALLOWED_TOOLS)
+
     logger.info(f"✅ Total paths after filtering: {len(combined_spec['paths'])}")
     logger.info(f"🎯 Total allowed tools: {len(ALLOWED_TOOLS)}")
 
     logger.info("🚀 Building MCP from filtered OpenAPI spec")
+    logger.info("✂️ ZohoAsyncClient will simplify complex responses automatically")
+    logger.info("🔧 All $ref in response schemas have been removed")
+    logger.info("🔧 All parameter schemas have been fixed")
 
     mcp_server = FastMCP.from_openapi(
         openapi_spec=combined_spec,
@@ -505,6 +167,7 @@ def build_mcp() -> FastMCP:
     )
 
     logger.info("✅ MCP server built successfully")
+    logger.info("🛡️  Protection against validation errors: ACTIVE")
     return mcp_server
 
 
@@ -524,11 +187,19 @@ except Exception as e:
 # 🔹 Ejecutar MCP
 # ====================================================
 if __name__ == "__main__":
+    os.environ["FASTMCP_EXPERIMENTAL_ENABLE_NEW_OPENAPI_PARSER"] = "true"
     os.environ["FASTMCP_HOST"] = "0.0.0.0"
     os.environ["FASTMCP_PORT"] = "8080"
 
+    logger.info("=" * 80)
     logger.info("🚀 Starting AI Agent MCP server at http://0.0.0.0:8080/mcp")
     logger.info(f"📊 Registered {len(ALLOWED_TOOLS)} tools")
+    logger.info("🆕 Using NEW OpenAPI parser")
+    logger.info("🛡️  Schema error protection:")
+    logger.info("   ✅ Response simplification enabled (ZohoAsyncClient)")
+    logger.info("   ✅ $ref removal enabled (openapi_utils)")
+    logger.info("   ✅ Parameter schema fixing enabled (openapi_utils)")
+    logger.info("=" * 80)
 
     try:
         mcp.run(transport="http", host="0.0.0.0", port=8080)
