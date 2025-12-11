@@ -9,7 +9,7 @@ def generate_dynamic_request_schema(operation_id: str, operation: dict) -> dict:
     Genera un schema dinámico basado en la descripción y parámetros del endpoint.
     Extrae campos comunes de Zoho Books y crea un schema flexible.
     """
-    
+
     # Schema base genérico pero con estructura
     base_schema = {
         "type": "object",
@@ -17,7 +17,7 @@ def generate_dynamic_request_schema(operation_id: str, operation: dict) -> dict:
         "description": operation.get("description", f"Request body for {operation_id}"),
         "properties": {},
     }
-    
+
     # Detectar el tipo de entidad por el operation_id
     entity_type = None
     if "contact" in operation_id:
@@ -40,7 +40,7 @@ def generate_dynamic_request_schema(operation_id: str, operation: dict) -> dict:
         entity_type = "payment"
     elif "vendor" in operation_id:
         entity_type = "vendor"
-    
+
     # Agregar propiedades comunes según el tipo de entidad
     if entity_type == "contact":
         base_schema["properties"] = {
@@ -208,41 +208,195 @@ def generate_dynamic_request_schema(operation_id: str, operation: dict) -> dict:
     return base_schema
 
 
+def fix_missing_parameters(spec: dict) -> dict:
+    """
+    🔥 SOLUCIÓN CRÍTICA - Arregla referencias rotas a #/components/parameters/
+
+    El OpenAPI de Zoho Books tiene referencias a parámetros que no existen.
+    Esta función reemplaza las referencias con definiciones inline.
+    """
+    logger.info("🔧 Fixing missing parameter references...")
+
+    # Definir parámetros comunes inline
+    common_params = {
+        "organization_id": {
+            "name": "organization_id",
+            "in": "query",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Organization ID",
+        },
+        "invoice_id": {
+            "name": "invoice_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the invoice",
+        },
+        "bill_id": {
+            "name": "bill_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the bill",
+        },
+        "contact_id": {
+            "name": "contact_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the contact",
+        },
+        "item_id": {
+            "name": "item_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the item",
+        },
+        "estimate_id": {
+            "name": "estimate_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the estimate",
+        },
+        "expense_id": {
+            "name": "expense_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the expense",
+        },
+        "salesorder_id": {
+            "name": "salesorder_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the sales order",
+        },
+        "purchase_order_id": {
+            "name": "purchase_order_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the purchase order",
+        },
+        "purchaseorder_id": {
+            "name": "purchaseorder_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the purchase order",
+        },
+        "payment_id": {
+            "name": "payment_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the payment",
+        },
+        "user_id": {
+            "name": "user_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the user",
+        },
+        "project_id": {
+            "name": "project_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the project",
+        },
+        "address_id": {
+            "name": "address_id",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string"},
+            "description": "Unique identifier of the address",
+        },
+    }
+
+    fixed_count = 0
+
+    for path, path_item in spec.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
+                continue
+
+            if "parameters" not in operation:
+                continue
+
+            new_params = []
+            for param in operation["parameters"]:
+                if "$ref" in param:
+                    ref = param["$ref"]
+                    param_name = ref.split("/")[-1]
+
+                    if param_name in common_params:
+                        new_params.append(common_params[param_name].copy())
+                        fixed_count += 1
+                        logger.debug(
+                            f"   🔧 Fixed {param_name} in {operation.get('operationId')}"
+                        )
+                    else:
+                        # Si no está en common_params, crear uno genérico
+                        logger.warning(f"   ⚠️  Unknown parameter: {param_name}")
+                        new_params.append(
+                            {
+                                "name": param_name,
+                                "in": "query",
+                                "required": False,
+                                "schema": {"type": "string"},
+                            }
+                        )
+                        fixed_count += 1
+                else:
+                    new_params.append(param)
+
+            operation["parameters"] = new_params
+
+    logger.info(f"✅ Fixed {fixed_count} parameter references")
+    return spec
+
+
 def add_missing_request_schemas(spec: dict) -> dict:
     """
     Recorre TODOS los endpoints POST/PUT/PATCH y genera schemas dinámicamente
     para aquellos que tienen referencias rotas o schemas vacíos.
     """
-    
+
     if "components" not in spec:
         spec["components"] = {}
     if "schemas" not in spec["components"]:
         spec["components"]["schemas"] = {}
-    
+
     schemas = spec["components"]["schemas"]
     schemas_added = 0
-    
+
     # Recorrer todos los paths y buscar operaciones que necesiten schemas
     for path, path_item in spec.get("paths", {}).items():
         for method, operation in path_item.items():
             if method.lower() not in ["post", "put", "patch"]:
                 continue
-            
+
             operation_id = operation.get("operationId")
             if not operation_id:
                 continue
-            
+
             # Verificar si tiene requestBody con $ref
             request_body = operation.get("requestBody", {})
             content = request_body.get("content", {})
             json_content = content.get("application/json", {})
             schema = json_content.get("schema", {})
-            
+
             # Si tiene $ref, extraer el nombre del schema
             if "$ref" in schema:
                 ref = schema["$ref"]
                 schema_name = ref.split("/")[-1]  # Obtener el nombre del schema
-                
+
                 # Si el schema no existe, crearlo dinámicamente
                 if schema_name not in schemas:
                     logger.info(
@@ -252,15 +406,15 @@ def add_missing_request_schemas(spec: dict) -> dict:
                         operation_id, operation
                     )
                     schemas_added += 1
-    
+
     logger.info(f"✅ Added {schemas_added} dynamic request schemas")
     return spec
 
 
 def filter_openapi_paths(spec: dict, allowed_tools: set) -> dict:
     """
-    Filtra los paths del OpenAPI para incluir solo allowed_tools.
-    Los schemas faltantes ya fueron agregados por add_missing_request_schemas().
+    🔥 FIX: Filtra los MÉTODOS HTTP del OpenAPI para incluir solo allowed_tools.
+    Preserva paths que tienen al menos UN método permitido.
     """
     logger.info("🔍 Starting OpenAPI paths filtering...")
 
@@ -274,31 +428,32 @@ def filter_openapi_paths(spec: dict, allowed_tools: set) -> dict:
 
     for path, path_item in spec.get("paths", {}).items():
         filtered_path_item = {}
+        has_included_method = False
 
-        # Copiar keys que NO son métodos HTTP (como 'parameters')
+        # PRIMERO: Copiar keys que NO son métodos HTTP (como 'parameters')
         for key, value in path_item.items():
             if key.lower() not in ["get", "post", "put", "patch", "delete"]:
                 filtered_path_item[key] = value
 
-        # Filtrar métodos HTTP
+        # SEGUNDO: Filtrar métodos HTTP individualmente
         for method in ["get", "post", "put", "patch", "delete"]:
             if method not in path_item:
                 continue
-            
+
             operation = path_item[method]
             operation_id = operation.get("operationId")
 
             if operation_id in allowed_tools:
                 filtered_path_item[method] = operation
                 included_count += 1
+                has_included_method = True
                 logger.debug(f"✅ Including: {operation_id} ({method.upper()} {path})")
             else:
                 excluded_count += 1
                 logger.debug(f"⏭️  Skipping: {operation_id}")
 
-        # Solo agregar el path si tiene al menos UN método HTTP
-        has_http_method = any(m in filtered_path_item for m in ["get", "post", "put", "patch", "delete"])
-        if has_http_method:
+        # TERCERO: Solo agregar el path si tiene al menos UN método HTTP incluido
+        if has_included_method:
             filtered_paths[path] = filtered_path_item
 
     logger.info(
@@ -311,52 +466,50 @@ def filter_openapi_paths(spec: dict, allowed_tools: set) -> dict:
 def remove_all_refs_from_schemas(spec: dict) -> dict:
     """
     🔥 SOLUCIÓN AL ERROR DE SCHEMA - CAPA 2
-    
+
     Recorre todos los schemas y convierte las referencias $ref en definiciones inline.
     Esto elimina el problema de referencias rotas.
     """
-    
+
     if "components" not in spec or "schemas" not in spec["components"]:
         logger.info("⏭️ No schemas found to clean")
         return spec
-    
+
     schemas = spec["components"]["schemas"]
-    
+
     def replace_refs_recursive(obj, depth=0):
         """Reemplaza todas las referencias $ref recursivamente con tipos básicos."""
         if depth > 10:
             logger.warning(f"⚠️ Max depth reached in schema resolution")
             return {"type": "string"}
-        
+
         if isinstance(obj, dict):
             if "$ref" in obj:
                 logger.debug(f"   🔧 Replaced $ref: {obj['$ref']} -> type: string")
                 return {"type": "string"}
             else:
-                return {k: replace_refs_recursive(v, depth + 1) 
-                       for k, v in obj.items()}
+                return {k: replace_refs_recursive(v, depth + 1) for k, v in obj.items()}
         elif isinstance(obj, list):
-            return [replace_refs_recursive(item, depth + 1) 
-                   for item in obj]
+            return [replace_refs_recursive(item, depth + 1) for item in obj]
         else:
             return obj
-    
+
     # Aplicar a todos los schemas
     logger.info("🔧 Removing all $ref from response schemas...")
     cleaned_count = 0
     total_refs = 0
-    
+
     for schema_name, schema_def in list(schemas.items()):
         original_str = str(schema_def)
         original_refs = original_str.count("$ref")
-        
+
         if original_refs > 0:
             cleaned = replace_refs_recursive(schema_def)
             schemas[schema_name] = cleaned
             cleaned_count += 1
             total_refs += original_refs
             logger.debug(f"   ✅ Cleaned {schema_name}: removed {original_refs} $ref")
-    
+
     logger.info(f"✅ Cleaned {cleaned_count} schemas, removed {total_refs} total $ref")
     return spec
 
@@ -364,18 +517,18 @@ def remove_all_refs_from_schemas(spec: dict) -> dict:
 def fix_parameter_schemas(spec: dict) -> dict:
     """
     🔥 SOLUCIÓN ADICIONAL - Arregla esquemas de parámetros
-    
+
     FastMCP valida que parámetros como 'page' y 'per_page' sean strings,
     pero los OpenAPI los definen como integers. Esta función los convierte.
     """
     logger.info("🔧 Fixing parameter schemas...")
     fixed_count = 0
-    
+
     for path, path_item in spec.get("paths", {}).items():
         for method, operation in path_item.items():
             if method.lower() not in ["get", "post", "put", "patch", "delete"]:
                 continue
-            
+
             # Arreglar parámetros
             parameters = operation.get("parameters", [])
             for param in parameters:
@@ -385,127 +538,9 @@ def fix_parameter_schemas(spec: dict) -> dict:
                     if schema.get("type") == "integer":
                         schema["type"] = "string"
                         fixed_count += 1
-                        logger.debug(f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}")
-    
-    logger.info(f"✅ Fixed {fixed_count} parameter schemas")
-    return spec
+                        logger.debug(
+                            f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}"
+                        )
 
-
-def fix_parameter_schemas(spec: dict) -> dict:
-    """
-    🔥 SOLUCIÓN ADICIONAL - Arregla esquemas de parámetros
-    
-    FastMCP valida que parámetros como 'page' y 'per_page' sean strings,
-    pero los OpenAPI los definen como integers. Esta función los convierte.
-    """
-    logger.info("🔧 Fixing parameter schemas...")
-    fixed_count = 0
-    
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
-                continue
-            
-            # Arreglar parámetros
-            parameters = operation.get("parameters", [])
-            for param in parameters:
-                if "schema" in param:
-                    schema = param["schema"]
-                    # Si tiene type integer, convertir a string para FastMCP
-                    if schema.get("type") == "integer":
-                        schema["type"] = "string"
-                        fixed_count += 1
-                        logger.debug(f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}")
-    
-    logger.info(f"✅ Fixed {fixed_count} parameter schemas")
-    return spec
-
-
-def fix_parameter_schemas(spec: dict) -> dict:
-    """
-    🔥 SOLUCIÓN ADICIONAL - Arregla esquemas de parámetros
-    
-    FastMCP valida que parámetros como 'page' y 'per_page' sean strings,
-    pero los OpenAPI los definen como integers. Esta función los convierte.
-    """
-    logger.info("🔧 Fixing parameter schemas...")
-    fixed_count = 0
-    
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
-                continue
-            
-            # Arreglar parámetros
-            parameters = operation.get("parameters", [])
-            for param in parameters:
-                if "schema" in param:
-                    schema = param["schema"]
-                    # Si tiene type integer, convertir a string para FastMCP
-                    if schema.get("type") == "integer":
-                        schema["type"] = "string"
-                        fixed_count += 1
-                        logger.debug(f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}")
-    
-    logger.info(f"✅ Fixed {fixed_count} parameter schemas")
-    return spec
-
-
-def fix_parameter_schemas(spec: dict) -> dict:
-    """
-    🔥 SOLUCIÓN ADICIONAL - Arregla esquemas de parámetros
-    
-    FastMCP valida que parámetros como 'page' y 'per_page' sean strings,
-    pero los OpenAPI los definen como integers. Esta función los convierte.
-    """
-    logger.info("🔧 Fixing parameter schemas...")
-    fixed_count = 0
-    
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
-                continue
-            
-            # Arreglar parámetros
-            parameters = operation.get("parameters", [])
-            for param in parameters:
-                if "schema" in param:
-                    schema = param["schema"]
-                    # Si tiene type integer, convertir a string para FastMCP
-                    if schema.get("type") == "integer":
-                        schema["type"] = "string"
-                        fixed_count += 1
-                        logger.debug(f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}")
-    
-    logger.info(f"✅ Fixed {fixed_count} parameter schemas")
-    return spec
-
-
-def fix_parameter_schemas(spec: dict) -> dict:
-    """
-    🔥 SOLUCIÓN ADICIONAL - Arregla esquemas de parámetros
-    
-    FastMCP valida que parámetros como 'page' y 'per_page' sean strings,
-    pero los OpenAPI los definen como integers. Esta función los convierte.
-    """
-    logger.info("🔧 Fixing parameter schemas...")
-    fixed_count = 0
-    
-    for path, path_item in spec.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if method.lower() not in ["get", "post", "put", "patch", "delete"]:
-                continue
-            
-            # Arreglar parámetros
-            parameters = operation.get("parameters", [])
-            for param in parameters:
-                if "schema" in param:
-                    schema = param["schema"]
-                    # Si tiene type integer, convertir a string para FastMCP
-                    if schema.get("type") == "integer":
-                        schema["type"] = "string"
-                        fixed_count += 1
-                        logger.debug(f"   🔧 Fixed parameter '{param.get('name')}' in {operation.get('operationId')}")
-    
     logger.info(f"✅ Fixed {fixed_count} parameter schemas")
     return spec

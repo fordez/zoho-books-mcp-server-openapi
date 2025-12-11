@@ -1,5 +1,5 @@
 # ====================================================
-# 🤖 HERRAMIENTAS ESENCIALES PARA AI AGENT (85 tools)
+# 🤖 HERRAMIENTAS ESENCIALES PARA AI AGENT (110 tools)
 # ====================================================
 ALLOWED_TOOLS = {
     # ============ INVOICES (12 tools) ============
@@ -56,6 +56,17 @@ ALLOWED_TOOLS = {
     "get_expense_receipt",
     "create_expense_receipt",
     "delete_expense_receipt",
+    # ============ RECURRING EXPENSES (10 tools) ============
+    "create_recurring_expense",
+    "list_recurring_expenses",
+    "get_recurring_expense",
+    "update_recurring_expense",
+    "update_recurring_expense_using_custom_field",
+    "delete_recurring_expense",
+    "stop_recurring_expense",
+    "resume_recurring_expense",
+    "list_child_expenses_of_recurring_expense",
+    "list_recurring_expense_history",
     # ============ VENDOR PAYMENTS (6 tools) ============
     "list_vendor_payments",
     "get_vendor_payment",
@@ -86,11 +97,26 @@ ALLOWED_TOOLS = {
     "update_purchase_order",
     "delete_purchase_order",
     "list_purchase_order_comments",
+    # ============ CREDIT NOTES (11 tools) ============
+    "create_credit_note",
+    "list_credit_notes",
+    "get_credit_note",
+    "update_credit_note",
+    "delete_credit_note",
+    "email_credit_note",
+    "mark_credit_note_void",
+    "mark_credit_note_draft",
+    "mark_credit_note_open",
+    "submit_credit_note",
+    "approve_credit_note",
     # ============ USERS (3 tools) ============
     "list_users",
     "get_user",
     "get_current_user",
-    # ============ PROJECTS (2 tools) ============
+    # ============ PROJECTS (3 tools) ============
     "list_projects",
     "get_project",
+    "create_project",
+    # ============ CHART OF ACCOUNTS (1 tool) ============
+    "list_chart_of_accounts",
 }
