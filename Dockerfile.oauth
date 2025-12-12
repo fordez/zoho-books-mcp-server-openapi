@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar código del OAuth server y librerías compartidas
+COPY oauth_page ./oauth_page
+COPY shared ./shared
+
+# Crear la base de datos en la ruta correcta con permisos de escritura
+RUN touch oauth_page/zoho_tokens.db && chmod 666 oauth_page/zoho_tokens.db
+
+EXPOSE 8081
+
+CMD ["python", "oauth_page/main.py"]

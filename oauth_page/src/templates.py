@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 
 from config import REGION_DISPLAY
+from src.utils import get_ngrok_public_url
 
 
 def get_base_style() -> str:
@@ -209,14 +210,14 @@ def render_setup_required_page(region: str) -> str:
 
     # Determine the correct Zoho Books URL based on region
     zoho_books_urls = {
-        "com": "https://books.zoho.com",
-        "in": "https://books.zoho.in",
-        "eu": "https://books.zoho.eu",
-        "com.au": "https://books.zoho.com.au",
-        "jp": "https://books.zoho.jp",
+        "com": "https://books.zoho.com    ",
+        "in": "https://books.zoho.in    ",
+        "eu": "https://books.zoho.eu    ",
+        "com.au": "https://books.zoho.com.au    ",
+        "jp": "https://books.zoho.jp    ",
     }
 
-    books_url = zoho_books_urls.get(region, "https://books.zoho.com")
+    books_url = zoho_books_urls.get(region, "https://books.zoho.com    ")
 
     return f"""
     <!DOCTYPE html>
@@ -393,8 +394,12 @@ def render_home_page(
     <body>
         <div class="container">
             <div class="header">
-                <h1>🔐 Zoho Books Account Manager</h1>
-                <p style="color: #8b949e;">Manage multiple Zoho Books accounts and select which one to use</p>
+                <h1>🔐 Zoho Books MCP Server</h1>
+                <p style="color: #8b949e; margin-top: 15px;">Zoho Books Account Manager</p>
+                <a href="/tools/docs" class="btn btn-primary" style="margin-top: 10px; text-decoration: none; display: inline-block;">
+                    📘 Tools Documentation
+                </a>
+                <p style="color: #8b949e; margin-top: 15px;">Manage multiple Zoho Books accounts and select which one to use</p>
             </div>
 
             {active_info}

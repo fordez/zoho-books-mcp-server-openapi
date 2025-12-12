@@ -9,8 +9,9 @@ from typing import Dict, List, Optional
 class TokenDB:
     """Base de datos multi-tenant para tokens de Zoho"""
 
-    def __init__(self, db_path: str = "tokens.db"):
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: str):
+        # Ruta absoluta segura
+        self.db_path = Path(db_path).resolve()
         self.local = threading.local()
         self._init_db()
 
@@ -48,7 +49,7 @@ class TokenDB:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_active ON users(is_active)")
 
         conn.commit()
-        print(f"✅ Database initialized: {self.db_path}")
+        print(f"✅ Database initialized at: {self.db_path}")
 
     def save_user(self, user_id: str, data: Dict) -> None:
         """Guardar o actualizar usuario"""
@@ -65,7 +66,7 @@ class TokenDB:
                     api_domain = ?, region = ?, expires_at = ?,
                     email = ?, company_name = ?, is_active = 1
                 WHERE user_id = ?
-            """,
+                """,
                 (
                     data["access_token"],
                     data["refresh_token"],
@@ -85,7 +86,7 @@ class TokenDB:
                 (user_id, access_token, refresh_token, organization_id,
                  api_domain, region, expires_at, connected_at, email, company_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                """,
                 (
                     user_id,
                     data["access_token"],
@@ -130,7 +131,7 @@ class TokenDB:
             UPDATE users
             SET access_token = ?, expires_at = ?, last_used = ?
             WHERE user_id = ?
-        """,
+            """,
             (access_token, expires_at, datetime.now().isoformat(), user_id),
         )
         conn.commit()
@@ -143,7 +144,7 @@ class TokenDB:
                    last_used, email, company_name
             FROM users
             WHERE is_active = 1
-            ORDER BY last_used DESC NULLS LAST
+            ORDER BY last_used DESC
         """)
         return [dict(row) for row in cursor.fetchall()]
 
@@ -161,21 +162,28 @@ class TokenDB:
         return dict(row) if row else {}
 
 
+# -------------------------
+#   SINGLETON GLOBAL
+# -------------------------
+
 _db_instance = None
 
 
 def get_db(db_path: str = None) -> TokenDB:
     """
-    Obtiene instancia singleton de TokenDB
+    Obtiene instancia singleton de TokenDB.
 
-    Args:
-        db_path: Path custom a la BD (opcional)
-                 Default: oauth_server/tokens.db
+    Si no se envía db_path, usa automáticamente:
+       oauth_page/zoho_tokens.db
     """
     global _db_instance
+
     if _db_instance is None:
         if db_path is None:
-            # Default path
-            db_path = str(Path(__file__).parent.parent / "oauth_server" / "tokens.db")
-        _db_instance = TokenDB(db_path)
+            # ruta del proyecto → oauth_page/zoho_tokens.db
+            project_root = Path(__file__).resolve().parents[1]
+            db_path = project_root / "oauth_page" / "zoho_tokens.db"
+
+        _db_instance = TokenDB(str(db_path))
+
     return _db_instance

@@ -1,19 +1,42 @@
-version: "3.8"
 services:
   zoho-mcp:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
     container_name: zoho-mcp-server
     restart: unless-stopped
-    expose:
-      - "8080"
+    ports:
+      - "${MCP_PORT}:${MCP_PORT}"
     environment:
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
-      ZOHO_REFRESH_TOKEN: ${ZOHO_REFRESH_TOKEN}
-      ZOHO_ORG_ID: ${ZOHO_ORG_ID}
-      ZOHO_BASE_URL: ${ZOHO_BASE_URL}
+      ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI}
     volumes:
-      - ./openapi-all:/app/openapi-all:ro
+      # 1. OpenAPI: Lo montamos DENTRO de mcp_server para que tu código lo encuentre
+      - ./mcp_server/openapi-all:/app/mcp_server/openapi-all:ro
+
+      # 2. Base de Datos: La montamos en la carpeta oauth_page para que token_db.py la encuentre
+      - ./oauth_page/zoho_tokens.db:/app/oauth_page/zoho_tokens.db
+
+    networks:
+      - mcp-network
+
+  oauth-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.oauth
+    container_name: zoho-oauth-server
+    restart: unless-stopped
+    ports:
+      - "${OAUTH_PORT}:${OAUTH_PORT}"
+    environment:
+      ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
+      ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
+      ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI}
+    volumes:
+      # La misma DB, en la misma ruta exacta
+      - ./oauth_page/zoho_tokens.db:/app/oauth_page/zoho_tokens.db
+
     networks:
       - mcp-network
 
@@ -23,11 +46,11 @@ services:
     restart: unless-stopped
     command:
       - "http"
-      - "zoho-mcp:8080"
+      - "zoho-mcp:${MCP_PORT}"
     environment:
       NGROK_AUTHTOKEN: ${NGROK_TOKEN}
     ports:
-      - "4040:4040" # Puerto para la interfaz web de ngrok
+      - "4040:4040"
     depends_on:
       - zoho-mcp
     networks:

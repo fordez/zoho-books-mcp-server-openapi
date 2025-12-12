@@ -12,8 +12,12 @@ from config import (
 )
 from fastapi import Request
 from fastapi.responses import HTMLResponse
-from templates import render_error_page, render_setup_required_page, render_success_page
-from utils import extract_region_from_domain, get_base_url
+from src.templates import (
+    render_error_page,
+    render_setup_required_page,
+    render_success_page,
+)
+from src.utils import extract_region_from_domain, get_base_url
 
 
 async def exchange_code_for_tokens(code: str) -> Dict:

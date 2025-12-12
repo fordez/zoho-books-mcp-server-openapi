@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copiar requirements y usar cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código del MCP server
+COPY mcp_server ./mcp_server
+COPY shared ./shared
+
+# --- CORRECCIÓN CLAVE ---
+# Creamos la carpeta 'oauth_page' para engañar a token_db.py
+# y copiamos la base de datos ahí dentro.
+RUN mkdir -p oauth_page
+COPY oauth_page/zoho_tokens.db ./oauth_page/zoho_tokens.db
+
+# Exponer puerto MCP
+EXPOSE 8080
+
+ENV FASTMCP_HOST=0.0.0.0
+ENV FASTMCP_PORT=8080
+
+CMD ["python", "mcp_server/server.py"]

@@ -1,14 +1,19 @@
+import os
 import sys
 from pathlib import Path
 
 from fastapi import FastAPI
 
-# Add parent directory to path to import shared module
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import MCP_PORT, OAUTH_PORT
-from routes import setup_routes
+# Add parent directory (project root) to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.routes import setup_routes
 
 from shared.token_db import get_db
+
+# Load env vars
+MCP_PORT = int(os.getenv("MCP_PORT", "8080"))
+OAUTH_PORT = int(os.getenv("OAUTH_PORT", "8081"))
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -16,7 +21,7 @@ app = FastAPI()
 # Initialize database
 db = get_db()
 
-# Setup all routes
+# Setup routes
 setup_routes(app, db)
 
 

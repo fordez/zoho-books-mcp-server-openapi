@@ -1,16 +1,17 @@
 import sqlite3
 from datetime import datetime
 
-from auth import (
+from config import MCP_PORT
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from src.auth import (
     generate_auth_url,
     process_oauth_callback,
     refresh_token_if_needed,
 )
-from config import MCP_PORT
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from templates import render_home_page
-from utils import get_base_url
+from src.docs import render_tools_docs_page  # Importa la nueva función
+from src.templates import render_home_page
+from src.utils import get_base_url, get_ngrok_public_url
 
 
 def setup_routes(app: FastAPI, db):
@@ -38,7 +39,17 @@ def setup_routes(app: FastAPI, db):
         base_url = get_base_url(request)
         mcp_url = f"{base_url}:{MCP_PORT}/mcp"
 
+        # Si hay un tunnel ngrok activo, usar esa URL en vez de localhost
+        ngrok_url = get_ngrok_public_url()
+        if ngrok_url:
+            mcp_url = f"{ngrok_url}/mcp"
+
         return HTMLResponse(render_home_page(accounts, active_account, mcp_url))
+
+    @app.get("/tools/docs")  # Nueva ruta para la documentación
+    async def tools_docs():
+        """Render the MCP Tools Documentation page"""
+        return HTMLResponse(render_tools_docs_page())
 
     @app.post("/account/{user_id}/activate")
     async def activate_account(user_id: str):
